@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>olcCodeJam</title>
+	</head>
+	<body>
+		<canvas id="game" width="512" height="512">Error</canvas>
+		<script type="text/javascript" src="engine/engine.js"></script>
+
+		<script type="text/javascript">
+			let ang = 0.0;
+			let canvas = document.getElementById("game");
+			gfx.create(canvas);
+			gfx.projection(math.perspective(math.radians(50.0), 1.0, 0.01, 200.0));
+			gfx.view(math.translation(0.0, 0.0, -4.0));
+
+			let s = 0.5;
+			let vs = [
+				/* FRONT */
+				math.makeVertex(-s, -s, -s,  0.0, 0.0,  1.0, 1.0, 1.0, 1.0,  0.0, 0.0, -1.0),
+				math.makeVertex( s, -s, -s,  1.0, 0.0,  1.0, 1.0, 1.0, 1.0,  0.0, 0.0, -1.0),
+				math.makeVertex( s,  s, -s,  1.0, 1.0,  1.0, 1.0, 1.0, 1.0,  0.0, 0.0, -1.0),
+				math.makeVertex(-s,  s, -s,  0.0, 1.0,  1.0, 1.0, 1.0, 1.0,  0.0, 0.0, -1.0),
+
+				/* BACK */
+				math.makeVertex(-s, -s,  s,  0.0, 0.0,  1.0, 1.0, 1.0, 1.0,  0.0, 0.0,  1.0),
+				math.makeVertex( s, -s,  s,  1.0, 0.0,  1.0, 1.0, 1.0, 1.0,  0.0, 0.0,  1.0),
+				math.makeVertex( s,  s,  s,  1.0, 1.0,  1.0, 1.0, 1.0, 1.0,  0.0, 0.0,  1.0),
+				math.makeVertex(-s,  s,  s,  0.0, 1.0,  1.0, 1.0, 1.0, 1.0,  0.0, 0.0,  1.0),
+
+				/* LEFT */
+				math.makeVertex(-s, -s,  s,  0.0, 0.0,  1.0, 1.0, 1.0, 1.0,  -1.0, 0.0, 0.0),
+				math.makeVertex(-s, -s, -s,  1.0, 0.0,  1.0, 1.0, 1.0, 1.0,  -1.0, 0.0, 0.0),
+				math.makeVertex(-s,  s, -s,  1.0, 1.0,  1.0, 1.0, 1.0, 1.0,  -1.0, 0.0, 0.0),
+				math.makeVertex(-s,  s,  s,  0.0, 1.0,  1.0, 1.0, 1.0, 1.0,  -1.0, 0.0, 0.0),
+
+				/* RIGHT */
+				math.makeVertex( s, -s,  s,  0.0, 0.0,  1.0, 1.0, 1.0, 1.0,   1.0, 0.0, 0.0),
+				math.makeVertex( s, -s, -s,  1.0, 0.0,  1.0, 1.0, 1.0, 1.0,   1.0, 0.0, 0.0),
+				math.makeVertex( s,  s, -s,  1.0, 1.0,  1.0, 1.0, 1.0, 1.0,   1.0, 0.0, 0.0),
+				math.makeVertex( s,  s,  s,  0.0, 1.0,  1.0, 1.0, 1.0, 1.0,   1.0, 0.0, 0.0),
+
+				/* BOTTOM */
+				math.makeVertex(-s, -s, -s,  0.0, 0.0,  1.0, 1.0, 1.0, 1.0,   0.0, -1.0, 0.0),
+				math.makeVertex( s, -s, -s,  1.0, 0.0,  1.0, 1.0, 1.0, 1.0,   0.0, -1.0, 0.0),
+				math.makeVertex( s, -s,  s,  1.0, 1.0,  1.0, 1.0, 1.0, 1.0,   0.0, -1.0, 0.0),
+				math.makeVertex(-s, -s,  s,  0.0, 1.0,  1.0, 1.0, 1.0, 1.0,   0.0, -1.0, 0.0),
+
+				/* TOP */
+				math.makeVertex(-s,  s, -s,  0.0, 0.0,  1.0, 1.0, 1.0, 1.0,   0.0,  1.0, 0.0),
+				math.makeVertex( s,  s, -s,  1.0, 0.0,  1.0, 1.0, 1.0, 1.0,   0.0,  1.0, 0.0),
+				math.makeVertex( s,  s,  s,  1.0, 1.0,  1.0, 1.0, 1.0, 1.0,   0.0,  1.0, 0.0),
+				math.makeVertex(-s,  s,  s,  0.0, 1.0,  1.0, 1.0, 1.0, 1.0,   0.0,  1.0, 0.0)
+			];
+			let is = [
+				0, 1, 2,     2, 3, 0,
+				4, 5, 6,     6, 7, 4,
+				8, 9, 10,    10, 11, 8,
+				12, 13, 14,  14, 15, 12,
+				16, 17, 18,  18, 19, 16,
+				20, 21, 22,  22, 23, 20
+			];
+
+			function render() {
+				let monk = res.get("cube.ply");
+				let rotY = math.rotationY(ang);
+				let rotZ = math.rotationZ(ang * 2.0);
+				let rot = math.mul(rotY, rotZ);
+				ang += 0.02;
+
+				gfx.clear();
+				gfx.begin();
+				gfx.draw(null, monk.vertices, monk.indices, rot);
+				gfx.end();
+				window.requestAnimationFrame(render);
+			}
+
+			res.add("bricks.png", "texture");
+			res.add("cube.ply", "model");
+			res.load(function() {
+				render();
+			});
+
+		</script>
+	</body>
+</html>
