@@ -15,10 +15,14 @@ var math = {
 		return inp;
 	},
 	mul: function(a, b) {
-		if (a.length === 4 && b instanceof Number) {
-			return math.mul(a, [b, b, b, b]);
-		} else if (a.length === 4 && b.length === 4) {
-			return [a[0] * b[0], a[1] * b[1], a[2] * b[2], a[3] * b[3]];
+		if (a.length <= 4 && b instanceof Number) {
+			let ret = new Array(a.length);
+			for (let i = 0; i < ret.length; i++) ret[i] = a[i] * b;
+			return ret;
+		} else if (a.length <= 4 && b.length <= 4 && a.length === b.length) {
+			let ret = new Array(a.length);
+			for (let i = 0; i < ret.length; i++) ret[i] = a[i] * b[i];
+			return ret;
 		} else if (a.length === 16 && b.length === 4) { // MAT4 * VEC4
 			let c0r0 = a[ 0], c1r0 = a[ 1], c2r0 = a[ 2], c3r0 = a[ 3];
 			let c0r1 = a[ 4], c1r1 = a[ 5], c2r1 = a[ 6], c3r1 = a[ 7];
@@ -73,19 +77,30 @@ var math = {
 		return a;
 	},
 	add: function(a, b) {
-		if (a.length !== 4 || b.length !== 4) return a;
-		return [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]];
+		if (a.length !== b.length) return a;
+		let ret = new Array(a.length);
+		for (let i = 0; i < ret.length; i++) ret[i] = a[i] + b[i];
+		return ret;
 	},
 	sub: function(a, b) {
-		if (a.length !== 4 || b.length !== 4) return a;
-		return [a[0] - b[0], a[1] - b[1], a[2] - b[2], a[3] - b[3]];
+		if (a.length !== b.length) return a;
+		let ret = new Array(a.length);
+		for (let i = 0; i < ret.length; i++) ret[i] = a[i] - b[i];
+		return ret;
 	},
 	dot: function(a, b) {
 		if (a.length !== b.length) return 0;
 		let sum = 0.0;
 		for (let i = 0; i < a.length; i++) sum += a[i] * b[i];
-		sum /= a.length;
-		return sum;
+		return sum + 0.0001;
+	},
+	cross: function(a, b) {
+		if (a.length !== 3 || b.length !== 3) return a;
+		return [
+			a[1] * b[2] - a[2] * b[1],
+			a[2] * b[0] - a[0] * b[2],
+			a[0] * b[1] - a[1] * b[0]
+		];
 	},
 	lengthSqr: function(a) {
 		return math.dot(a, a);
@@ -93,7 +108,9 @@ var math = {
 	length: function(a) { return Math.sqrt(math.lengthSqr(a)); },
 	normalize: function(a) {
 		let len = math.length(a);
-		return math.mul(a, 1.0 / len);
+		let ret = new Array(a.length);
+		for (let i = 0; i < ret.length; i++) ret[i] = a[i] / len;
+		return ret;
 	},
 	translation: function(x, y, z) {
 		return [
@@ -165,6 +182,51 @@ var math = {
 			         0, 0, near * far * rangeInv * 2,  0
 		];
 	},
+	rotation: function(f, u, r) {
+		if (r) {
+			return [
+				r[0], r[1], r[2], 0.0,
+				u[0], u[1], u[2], 0.0,
+				f[0], f[1], f[2], 0.0,
+				0.0, 0.0, 0.0, 1.0,
+			];
+		} else {
+			let fw = math.normalize(f);
+			let r = math.normalize(u);
+			r = math.cross(r, fw);
+
+			let up = math.cross(fw, r);
+			return math.rotation(fw, up, r);
+		}
+	},
+	axisAngle: function(axis, angle) {
+		let sa = Math.sin(angle), ca = Math.cos(angle);
+		let ax = math.normalize(axis);
+		let x = ax[0], y = ax[1], z = ax[2];
+
+		let xx = x * x, yy = y * y, zz = z * z;
+		let xy = x * y, xz = x * z, yz = y * z;
+
+		return [
+			xx + ca * (1.0 - xx), xy - ca * xy + sa * z, xz - ca * xz - sa * y, 0.0,
+			xy - ca * xy - sa * z, yy + ca * (1.0 - yy), yz - ca * yz + sa * x, 0.0,
+			xz - ca * xz + sa * y, yz - ca * yz - sa * x, zz + ca * (1.0 - zz), 0.0,
+			0.0, 0.0, 0.0, 1.0
+		];
+	},
+	lookAt: function(eye, at, up) {
+		let z = math.normalize(math.sub(eye, at));
+		let x = math.normalize(math.cross(math.normalize(up), z));
+		let y = math.cross(z, x);
+
+		let R = [
+			x[0], y[0], z[0], 0.0,
+			x[1], y[1], z[1], 0.0,
+			x[2], y[2], z[2], 0.0,
+			0.0, 0.0, 0.0, 1.0
+		];
+		return math.mul(R, math.translation(-eye[0], -eye[1], -eye[2]));
+	},
 	inverse: function(matrix) {
 		if (matrix.length !== 16) return matrix;
 		let result = [];
@@ -208,6 +270,32 @@ var math = {
 		ny = ny || 0;
 		nz = nz || 0;
 		return [[x, y, z], [u, v], [r, g, b, a], [nx, ny, nz]];
+	},
+	lerp: function(a, b, t) {
+		return (1 - t) * a + b * t;
+	},
+	matString: function(a, colSize) {
+		function pad(v, num) {
+			let count = num - v.length;
+			let ret = v;
+			for (let i = 0; i < count; i++) {
+				ret = " " + ret;
+			}
+			return ret;
+		}
+		colSize = colSize || 4;
+		let str = "[ ";
+		for (let i = 0; i < a.length; i++) {
+			if (i % colSize == 0 && i > 0) {
+				str += "]\n[ ";
+			}
+			let v = Math.round(a[i] * 100000) / 100000;
+			str += pad(v.toString(), 10) + " ";
+			if (i % colSize < colSize-1)
+				str += "| ";
+		}
+		str += "]";
+		return str;
 	}
 };
 
@@ -216,31 +304,50 @@ var math = {
  */
 var gfx = {
 	__VS:
-"precision highp float;\n" +
-"attribute vec3 vPosition;\n" +
-"attribute vec3 vNormal;\n" +
-"attribute vec2 vUV;\n" +
-"attribute vec4 vColor;\n" +
-"uniform mat4 uProjView;\n" +
-"varying vec2 oUV;\n" +
-"varying vec4 oColor;\n" +
-"varying vec3 oNormal;\n" +
-"void main() {\n" +
-"	gl_Position = uProjView * vec4(vPosition, 1.0);\n" +
-"	oUV = vUV;\n" +
-"	oColor = vColor;\n" +
-"	oNormal = normalize(vNormal);\n" +
-"}",
+`#define PIXEL_SIZE 0.84
+
+precision highp float;
+
+attribute vec3 vPosition;
+attribute vec3 vNormal;
+attribute vec2 vUV;
+attribute vec4 vColor;
+
+uniform mat4 uProjView;
+uniform vec2 uResolution;
+
+varying vec2 oUV;
+varying vec4 oColor;
+varying vec3 oNormal;
+
+void main() {
+	vec2 hres = uResolution * 0.25;
+	vec4 pos = uProjView * vec4(vPosition, 1.0);
+	vec4 vertex = pos;
+	vertex.xyz = pos.xyz / pos.w;
+	vertex.x = floor(hres.x * vertex.x) / hres.x;
+	vertex.y = floor(hres.y * vertex.y) / hres.y;
+	vertex.xyz *= pos.w;
+	gl_Position = vertex;
+
+	oUV = vUV;
+	oColor = vColor;
+	oNormal = normalize(vNormal);
+}`,
+
 	__FS:
-"precision mediump float;\n" +
-"uniform sampler2D uTexture;\n" +
-"varying vec2 oUV;\n" +
-"varying vec4 oColor;\n" +
-"varying vec3 oNormal;\n" +
-"void main() {\n" +
-"	vec4 col = texture2D(uTexture, oUV);\n" +
-"	gl_FragColor = col * oColor;\n" +
-"}",
+`precision mediump float;
+uniform sampler2D uTexture;
+varying vec2 oUV;
+varying vec4 oColor;
+varying vec3 oNormal;
+void main() {
+	//float nl = clamp(dot(oNormal, vec3(-1.0, 1.0, -1.0)) + 0.5, 0.0, 1.0);
+	vec4 col = texture2D(uTexture, oUV);
+	float a = col.a * oColor.a;
+	gl_FragColor = vec4(col.rgb * oColor.rgb, a);
+}`,
+
 	_canvas: null,
 	_gl: null,
 	_shader: null,
@@ -264,6 +371,7 @@ var gfx = {
 
 	_uProjView: 0,
 	_uTexture: 0,
+	_uResolution: 0,
 	_aPosition: 0,
 	_aUV: 0,
 	_aColor: 0,
@@ -305,10 +413,13 @@ var gfx = {
 		gl.useProgram(gfx._shader);
 		gfx._uProjView = gl.getUniformLocation(gfx._shader, "uProjView");
 		gfx._uTexture = gl.getUniformLocation(gfx._shader, "uTexture");
+		gfx._uResolution = gl.getUniformLocation(gfx._shader, "uResolution");
 		gfx._aPosition = gl.getAttribLocation(gfx._shader, "vPosition");
 		gfx._aUV = gl.getAttribLocation(gfx._shader, "vUV");
 		gfx._aColor = gl.getAttribLocation(gfx._shader, "vColor");
 		gfx._aNormal = gl.getAttribLocation(gfx._shader, "vNormal");
+
+		gl.uniform2f(gfx._uResolution, gfx._canvas.width, gfx._canvas.height);
 
 		// Buffers
 		gfx._vbo = gl.createBuffer();
@@ -337,6 +448,7 @@ var gfx = {
 		let pv = math.mul(gfx._projection, gfx._view);
 		gl.uniformMatrix4fv(gfx._uProjView, false, pv);
 		gl.uniform1i(gfx._uTexture, 0);
+		gl.uniform2f(gfx._uResolution, gfx._canvas.width, gfx._canvas.height);
 	},
 	clear: function(r, g, b) {
 		let gl = gfx._gl;
@@ -345,6 +457,7 @@ var gfx = {
 		b = b || 0;
 		gl.clearColor(r, g, b, 1.0);
 		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		gl.viewport(0, 0, gfx._canvas.width, gfx._canvas.height);
 	},
 	begin: function() {
 		let gl = gfx._gl;
@@ -452,9 +565,10 @@ var gfx = {
 			return gfx._view;
 		}
 	},
-	draw: function(texture, vertices, indices, transform) {
+	draw: function(texture, vertices, indices, transform, tint) {
 		if (!gfx._drawing) gfx.flush();
 
+		tint = tint || [1, 1, 1, 1];
 		texture = texture || gfx._defaultTexture;
 		transform = transform || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
@@ -475,7 +589,7 @@ var gfx = {
 			gfx._vertices.push(t[0], t[1], t[2]);
 			gfx._vertices.push(n[0], n[1], n[2]);
 			gfx._vertices.push(v[1][0], v[1][1]);
-			gfx._vertices.push(v[2][0], v[2][1], v[2][2], v[2][3]);
+			gfx._vertices.push(v[2][0] * tint[0], v[2][1] * tint[1], v[2][2] * tint[2], v[2][3] * tint[3]);
 		}
 
 		for (let i of indices) {
@@ -507,7 +621,7 @@ function Scanner(str) {
  */
 var res = {
 	_queue: [],
-	_loaded: [],
+	_loaded: {},
 	add: function(path, type) {
 		res._queue.push([ path, type ]);
 	},
@@ -575,7 +689,7 @@ var res = {
 						else if (f === "y")		vert[0][1] = sc.number();
 						else if (f === "z")		vert[0][2] = sc.number();
 						else if (f === "s")		vert[1][0] = sc.number();
-						else if (f === "t")		vert[1][1] = sc.number();
+						else if (f === "t")		vert[1][1] = -sc.number();
 						else if (f === "red")	vert[2][0] = sc.number() / 255;
 						else if (f === "green")	vert[2][1] = sc.number() / 255;
 						else if (f === "blue")	vert[2][2] = sc.number() / 255;
@@ -597,10 +711,7 @@ var res = {
 		return { vertices: vertices, indices: indices };
 	},
 	get: function(path) {
-		for (let l of res._loaded) {
-			if (l[0] === path) return l[1];
-		}
-		return null;
+		return res._loaded[path];
 	},
 	load: function(callback) {
 		let err = 0, ok = 0;
@@ -625,7 +736,7 @@ var res = {
 			if (type === "texture") {
 				let img = new Image();
 				img.onload = function() {
-					res._loaded.push([ path, res._createTexture(img) ]);
+					res._loaded[path] = res._createTexture(img);
 					success();
 				};
 				img.onerror = function() {
@@ -639,7 +750,7 @@ var res = {
 				xhr.onload = function() {
 					let status = xhr.status;
 					if (status === 200) {
-						res._loaded.push([ path, res._createModel(xhr.responseText) ]);
+						res._loaded[path] = res._createModel(xhr.responseText);
 						success();
 					} else {
 						console.error("Failed to load " + path);
@@ -650,4 +761,197 @@ var res = {
 			}
 		}
 	}
+};
+
+/**
+ * INPUT MANAGER
+ */
+var input = {
+	_keyboard: {},
+	_mouse: {},
+	_pos: [0, 0],
+	create: function(canvas) {
+		window.onkeydown = function(e) {
+			if (!input._keyboard[e.key])
+				input._keyboard[e.key] = { pressed: false, released: false, held: false };
+			input._keyboard[e.key].pressed = true;
+			input._keyboard[e.key].held = true;
+		};
+
+		window.onkeyup = function(e) {
+			if (!input._keyboard[e.key])
+				input._keyboard[e.key] = { pressed: false, released: false, held: false };
+			input._keyboard[e.key].released = true;
+			input._keyboard[e.key].held = false;
+		};
+
+		canvas.onmousedown = function(e) {
+			let btn = e.button.toString();
+			if (!input._mouse[btn])
+				input._mouse[btn] = { pressed: false, released: false, held: false };
+			input._mouse[btn].pressed = true;
+			input._mouse[btn].held = true;
+		};
+
+		canvas.onmouseup = function(e) {
+			let btn = e.button.toString();
+			if (!input._mouse[btn])
+				input._mouse[btn] = { pressed: false, released: false, held: false };
+			input._mouse[btn].released = true;
+			input._mouse[btn].held = false;
+		};
+
+		canvas.onmousemove = function(e) {
+			let rect = canvas.getBoundingClientRect();
+			let x = e.clientX - rect.left;
+			let y = e.clientY - rect.top;
+			input._pos = [x, y];
+		};
+	},
+	keyPressed: function(k) {
+		return input._keyboard[k] && input._keyboard[k].pressed;
+	},
+	keyReleased: function(k) {
+		return input._keyboard[k] && input._keyboard[k].released;
+	},
+	keyHeld: function(k) {
+		return input._keyboard[k] && input._keyboard[k].held;
+	},
+	mousePressed: function(k) {
+		return input._mouse[k] && input._mouse[k].pressed;
+	},
+	mouseReleased: function(k) {
+		return input._mouse[k] && input._mouse[k].released;
+	},
+	mouseHeld: function(k) {
+		return input._mouse[k] && input._mouse[k].held;
+	},
+	mousePosition: function() { return input._pos; },
+	update: function() {
+		for (let k in input._keyboard) {
+			input._keyboard[k].pressed = false;
+			input._keyboard[k].released = false;
+		}
+		for (let k in input._mouse) {
+			input._mouse[k].pressed = false;
+			input._mouse[k].released = false;
+		}
+	}
+};
+
+/**
+ * ENGINE
+ */
+var engine = {
+	_renderers: {},
+	_behaviors: {},
+	_world: [],
+	_createQueue: [],
+	_physicsWorld: null,
+	registerType: function(name, behavior, renderer) {
+		engine._renderers[name] = renderer || null;
+		engine._behaviors[name] = behavior || function(){};
+	},
+	get: function(name) {
+		for (let ent of engine._world) {
+			if (ent.name === name) return ent;
+		}
+		return null;
+	},
+	create: function(name, ctor) {
+		let ent = {
+			name: name,
+			position: [0.0, 0.0, 0.0],
+			rotation: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+			scale: [1.0, 1.0, 1.0],
+			origin: [0.0, 0.0, 0.0],
+			types: [],
+			active: true,
+			visible: true,
+			deathTimer: null,
+			// Physics
+			physicsBody: null,
+			physicsShape: null
+		};
+		engine._createQueue.push([ent, ctor]);
+	},
+	destroy: function(name, timeout) {
+		timeout = timeout || 0;
+		for (let ent of engine._world) {
+			if (ent.name === name) {
+				ent.deathTimer = timeout;
+				break;
+			}
+		}
+	},
+	update: function(ts) {
+		ts = ts || (1.0 / 60.0);
+
+		if (CANNON && engine._physicsWorld === null) { // cannon.js physics!
+			engine._physicsWorld = new CANNON.World();
+			engine._physicsWorld.gravity.set(0, -9.82, 0);
+
+			engine.registerType("physics", function(e) {
+				if (e.physicsBody === null) return;
+				let pos = e.physicsBody.position;
+				let rot = e.physicsBody.quaternion.toAxisAngle();
+				let axis = rot[0], angle = rot[1];
+				e.position = [pos.x, pos.y, pos.z];
+				e.rotation = math.axisAngle([axis.x, axis.y, axis.z], angle);
+			}, null);
+		}
+
+		for (let ent of engine._createQueue) {
+			let e = ent[0];
+			let ctor = ent[1];
+			if (ctor) ctor(e);
+			engine._world.push(e);
+		}
+		engine._createQueue = [];
+
+		if (CANNON) {
+			engine._physicsWorld.step(ts);
+		}
+
+		let rem = [];
+		for (let ent of engine._world) {
+			if (!ent.types) continue;
+			for (let type of ent.types) {
+				if (engine._behaviors[type]) engine._behaviors[type](ent, ts, engine._world);
+			}
+			if (ent.deathTimer !== null) {
+				if (ent.deathTimer > 0.0) {
+					ent.deathTimer -= ts;
+				} else {
+					rem.push(ent);
+				}
+			}
+		}
+		for (let ent of rem) {
+			if (ent.physicsBody) {
+				engine._physicsWorld.removeBody(ent.physicsBody);
+			}
+			engine._world.splice(engine._world.indexOf(ent), 1);
+		}
+		input.update();
+	},
+	render: function() {
+		gfx.begin();
+		for (let ent of engine._world) {
+			if (!ent.types) continue;
+			for (let type of ent.types) {
+				if (engine._renderers[type]) {
+					let p = math.translation(ent.position[0], ent.position[1], ent.position[2]);
+					let o = math.translation(-ent.origin[0], -ent.origin[1], -ent.origin[2]);
+					let t = math.mul(p, o);
+					let r = ent.rotation;
+					let s = math.scale(ent.scale[0], ent.scale[1], ent.scale[2]);
+					let xform = math.mul(t, math.mul(r, s));
+					engine._renderers[type](ent, xform, engine._world);
+				}
+			}
+		}
+		gfx.end();
+	},
+	physics: function() { return engine._physicsWorld; }
 };
