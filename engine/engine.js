@@ -707,7 +707,7 @@ var res = {
 				}
 			} else sc.scan();
 		}
-		console.log(fmt, vertexCount, indexCount);
+		// console.log(fmt, vertexCount, indexCount);
 		return { vertices: vertices, indices: indices };
 	},
 	get: function(path) {
@@ -762,6 +762,37 @@ var res = {
 		}
 	}
 };
+
+function Ent(name) {
+	this.name = name;
+	this.position = [0.0, 0.0, 0.0];
+	this.rotation = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+	this.scale = [1.0, 1.0, 1.0];
+	this.origin = [0.0, 0.0, 0.0];
+	this.types = [];
+	this.active = true;
+	this.visible = true;
+	this.deathTimer = null;
+	this.body = null;
+
+	this.is = function(name) {
+		for (let t of this.types) if (t === name) return true;
+		return false;
+	};
+
+	this.same = function(ent) {
+		if (this.types.length !== ent.types.length) return false;
+		let same = true;
+		for (let i = 0; i < this.types.length; i++) {
+			if (this.types[i] !== ent.types[i]) {
+				same = false;
+				break;
+			}
+		}
+		return same;
+	};
+
+}
 
 /**
  * INPUT MANAGER
@@ -858,30 +889,21 @@ var engine = {
 		}
 		return null;
 	},
-	create: function(name, ctor) {
-		let ent = {
-			name: name,
-			position: [0.0, 0.0, 0.0],
-			rotation: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-			scale: [1.0, 1.0, 1.0],
-			origin: [0.0, 0.0, 0.0],
-			types: [],
-			active: true,
-			visible: true,
-			deathTimer: null,
-			// Physics
-			physicsBody: null,
-			physicsShape: null
-		};
-		engine._createQueue.push([ent, ctor]);
+	create: function(name, ctor, args) {
+		let ent = new Ent(name);
+		engine._createQueue.push([ent, ctor, args]);
 	},
 	destroy: function(name, timeout) {
 		timeout = timeout || 0;
-		for (let ent of engine._world) {
-			if (ent.name === name) {
-				ent.deathTimer = timeout;
-				break;
+		if (typeof name === "string") {
+			for (let ent of engine._world) {
+				if (ent.name === name) {
+					ent.deathTimer = timeout;
+					break;
+				}
 			}
+		} else {
+			name.deathTimer = timeout;
 		}
 	},
 	update: function(ts) {
@@ -892,9 +914,9 @@ var engine = {
 			engine._physicsWorld.gravity.set(0, -9.82, 0);
 
 			engine.registerType("physics", function(e) {
-				if (e.physicsBody === null) return;
-				let pos = e.physicsBody.position;
-				let rot = e.physicsBody.quaternion.toAxisAngle();
+				if (e.body === null) return;
+				let pos = e.body.position;
+				let rot = e.body.quaternion.toAxisAngle();
 				let axis = rot[0], angle = rot[1];
 				e.position = [pos.x, pos.y, pos.z];
 				e.rotation = math.axisAngle([axis.x, axis.y, axis.z], angle);
@@ -904,7 +926,10 @@ var engine = {
 		for (let ent of engine._createQueue) {
 			let e = ent[0];
 			let ctor = ent[1];
-			if (ctor) ctor(e);
+			let args = ent[2];
+			if (ctor) {
+				ctor(e, args);
+			}
 			engine._world.push(e);
 		}
 		engine._createQueue = [];
@@ -928,8 +953,8 @@ var engine = {
 			}
 		}
 		for (let ent of rem) {
-			if (ent.physicsBody) {
-				engine._physicsWorld.removeBody(ent.physicsBody);
+			if (ent.body) {
+				engine._physicsWorld.removeBody(ent.body);
 			}
 			engine._world.splice(engine._world.indexOf(ent), 1);
 		}
