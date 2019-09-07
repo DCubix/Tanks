@@ -763,6 +763,7 @@ var res = {
 	}
 };
 
+var _ID = 0;
 function Ent(name) {
 	this.name = name;
 	this.position = [0.0, 0.0, 0.0];
@@ -774,6 +775,7 @@ function Ent(name) {
 	this.visible = true;
 	this.deathTimer = null;
 	this.body = null;
+	this.id = _ID++;
 
 	this.is = function(name) {
 		for (let t of this.types) if (t === name) return true;
@@ -911,7 +913,7 @@ var engine = {
 
 		if (CANNON && engine._physicsWorld === null) { // cannon.js physics!
 			engine._physicsWorld = new CANNON.World();
-			engine._physicsWorld.gravity.set(0, -9.82, 0);
+			engine._physicsWorld.gravity.set(0, -11, 0);
 
 			engine.registerType("physics", function(e) {
 				if (e.body === null) return;

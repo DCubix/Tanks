@@ -1,4 +1,4 @@
-// let dbg = document.getElementById("debug_");
+let dbg = document.getElementById("debug_");
 let zoom = 8.0;
 let ang = 0.0;
 let canvas = document.getElementById("game");
@@ -19,18 +19,17 @@ function tankConstructor(e, args) {
 		e.types.push("player_team");
 	}
 	if (args.friend) {
-		e.types.push("player_team");
 		e.types.push("friend");
+		e.types.push("player_team");
 	} else {
-		e.types.push("enemy_team");
 		e.types.push("enemy");
+		e.types.push("enemy_team");
 	}
 	if (args.ai) {
-		e.state = "";
+		e.state = "looking_for_target";
 		e.target = null;
 		e.types.push("ai");
 	}
-//	e.types.push("tank");
 
 	e.color = [
 		0.5 + Math.random() * 0.5,
@@ -187,49 +186,60 @@ function shoot(e, type) {
 engine.registerType("ai", function(e, dt, world) {
 	if (e.state === undefined || e.state === null) return;
 
+	let right = math.normalize(math.mul(e.rotation, [1.0, 0.0, 0.0, 0.0]));
+	let fwd = math.normalize(math.mul(e.rotation, [0.0, 0.0, 1.0, 0.0]));
+
 	if (e.state === "looking_for_target") {
 		let playerTeam = world.filter(function(e) { return e.is("player_team"); });
 		let enemyTeam = world.filter(function(e) { return e.is("enemy_team"); });
 		let _world = e.is("enemy_team") ? playerTeam : enemyTeam;
+
 		for (let obj of _world) {
-			if (obj === e) continue;
+			if (obj.id === e.id) continue;
 			if (obj.types.indexOf("tank") === -1) continue;
 
-			let dist = math.length(math.sub(obj.position, e.position));
-			if (dist <= 12.0) {
+			let vec = math.sub(obj.position, e.position);
+			let fb = math.dot(math.normalize(vec), [fwd[0], fwd[1], fwd[2]]);
+			if (fb > 0.0) {
 				e.target = obj;
-				console.log("TARGET ACQUIRED: " + obj.name);
 				e.state = "run_towards";
 				break;
 			}
 		}
 	} else if (e.state === "run_towards" && e.target) {
 		let vec = math.sub(e.target.position, e.position);
-		let right = math.normalize(math.mul(e.rotation, [1.0, 0.0, 0.0, 0.0]));
 		let side = math.dot([right[0], right[1], right[2]], math.normalize(vec));
+		let fb = math.dot(math.normalize(vec), [fwd[0], fwd[1], fwd[2]]);
 		let len = math.length(vec);
-		if (len <= 6.0) {
-			if (e.reloadTime <= 0.0 && e.ammo > 0 && side >= -0.4 && side <= 0.4) {
+
+		if (side < -0.1) {
+			e.rotSpeed = -1.2;
+		} else if (side > 0.1) {
+			e.rotSpeed = 1.2;
+		} else {
+			e.rotSpeed = 0.0;
+		}
+
+		if (len <= 8.0) {
+			if (e.reloadTime <= 0.0 && e.ammo > 0 && fb > 0.2) {
 				e.reloadTime = 0.25;
 				shoot(e, e.is("player_team") ? "player_team" : "enemy_team");
 			}
-			e.speed = 2.0;
-		} else if (len > 12.0) {
+			e.speed = 1.5;
+		} else if (fb <= 0.0) {
 			e.speed = 0;
 			e.rotSpeed = 0;
 			e.state = "looking_for_target";
 		} else {
-			if (side < -0.1) {
-				e.rotSpeed = -1.2;
-			} else if (side > 0.1) {
-				e.rotSpeed = 1.2;
-			} else {
-				e.rotSpeed = 0.0;
-			}
 			e.speed = 2.5;
 		}
-	} else if (e.target === null) {
-		e.state = "looking_for_target";
+
+		if (e.target.health <= 0) {
+			e.target = null;
+			e.speed = 0;
+			e.rotSpeed = 0;
+			e.state = "looking_for_target";
+		}
 	}
 });
 
